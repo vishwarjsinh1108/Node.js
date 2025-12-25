@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tasks — CRUD UI</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div class="app">
+        <header class="topbar">
+            <h1>Employee Management</h1>
+
+        </header>
+
+        <main class="container">
+            <section class="panel form-panel">
+                <h2>Add New Task</h2>
+                <form id="taskForm">
+                    <div class="row">
+                        <label for="name">Name</label>
+                        <input id="name" name="name" type="text" placeholder="Task name" required />
+                    </div>
+                    <div class="row">
+                        <label for="status">Status</label>
+                        <select id="status" name="status">
+                            <option value="Intern">Intern</option>
+                            <option value="full time">Full time</option>
+                            <option value="part time">Part time</option>
+                        </select>
+                    </div>
+                    <div class="row actions">
+                        <button type="submit" class="btn primary">Create</button>
+                        <button type="button" id="resetBtn" class="btn muted">Reset</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="panel list-panel">
+                <h2>Tasks</h2>
+                <div id="alerts"></div>
+                <div class="table-wrap">
+                    <table id="tasksTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+     
+    </div>
+
+    <script>
+        // Minimal client-side logic to interact with the existing Express API
+        const $ = (sel, root = document) => root.querySelector(sel);
+        const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+        const tasksTableBody = $('#tasksTable tbody');
+        const form = $('#taskForm');
+        const alerts = $('#alerts');
+
+        function showAlert(msg, type = 'success', timeout = 2500) {
+            const el = document.createElement('div');
+            el.className = `alert ${type}`;
+            el.textContent = msg;
+            alerts.appendChild(el);
+            setTimeout(() => el.classList.add('fade-out'), timeout - 500);
+            setTimeout(() => el.remove(), timeout);
+        }
+
+        async function fetchTasks() {
+            try {
+                const res = await fetch('/tasks');
+                const json = await res.json();
+                return json.data || [];
+            } catch (e) {
+                showAlert('Failed to load tasks', 'error');
+                return [];
+            }
+        }
+
+        function renderTasks(tasks) {
+            tasksTableBody.innerHTML = '';
+            tasks.forEach(t => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>
+                        ${t.id}
+                    </td>
+                    <td>
+                        ${escapeHtml(t.name)}
+                    </td>
+                    <td>${escapeHtml(t.status)}</td>
+                    <td class="actions-cell">
+                        <button class="btn small edit" data-id="${t.id}">Edit</button>
+                        <button class="btn small danger delete" data-id="${t.id}">Delete</button>
+                    </td>
+                `;
+                tasksTableBody.appendChild(tr);
+            });
+        }
+
+        function escapeHtml(str = '') {
+            return String(str).replace(/[&<>\"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'})[s]);
+        }
+
+        async function loadAndRender() {
+            const tasks = await fetchTasks();
+            renderTasks(tasks);
+        }
+
+        form.addEventListener('submit', async e => {
+            e.preventDefault();
+            const name = $('#name').value.trim();
+            const status = $('#status').value;
+            if (!name) return showAlert('Name is required', 'error');
+            try {
+                const res = await fetch('/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, status })
+                });
+                if (!res.ok) throw new Error('Create failed');
+                const json = await res.json();
+                showAlert('Task created');
+                form.reset();
+                loadAndRender();
+            } catch (err) {
+                showAlert('Failed to create task', 'error');
+            }
+        });
+
+        document.addEventListener('click', async (e) => {
+            const editBtn = e.target.closest('button.edit');
+            const delBtn = e.target.closest('button.delete');
+            if (editBtn) {
+                const id = editBtn.dataset.id;
+                const name = prompt('New name:');
+                if (name == null) return;
+                const status = prompt('Status:', 'Incomplete') || 'Incomplete';
+                try {
+                    const res = await fetch(`/tasks/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, status })
+                    });
+                    if (!res.ok) throw new Error('Update failed');
+                    showAlert('Task updated');
+                    loadAndRender();
+                } catch (err) {
+                    showAlert('Failed to update', 'error');
+                }
+            }
+            if (delBtn) {
+                const id = delBtn.dataset.id;
+                if (!confirm('Delete this task?')) return;
+                try {
+                    const res = await fetch(`/tasks/${id}`, { method: 'DELETE' });
+                    if (!res.ok) throw new Error('Delete failed');
+                    showAlert('Task deleted');
+                    loadAndRender();
+                } catch (err) {
+                    showAlert('Failed to delete', 'error');
+                }
+            }
+        });
+
+        $('#resetBtn').addEventListener('click', () => form.reset());
+
+        // initialize
+        loadAndRender();
+    </script>
+</body>
+</html>
